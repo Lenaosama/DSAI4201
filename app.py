@@ -1,62 +1,75 @@
 import streamlit as st
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from gensim.models import Word2Vec
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
+import gensim
+import os
 import nltk
+from sklearn.metrics.pairwise import cosine_similarity
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
 
-# Download required NLTK data
-nltk.download('punkt')
-nltk.download('stopwords')
+# -----------------------------
+# Fix NLTK for Streamlit Cloud
+# -----------------------------
+nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
 
-# Load precomputed document embeddings
+if not os.path.exists(nltk_data_path):
+    os.makedirs(nltk_data_path)
+
+nltk.data.path.append(nltk_data_path)
+
+nltk.download("punkt", download_dir=nltk_data_path)
+nltk.download("stopwords", download_dir=nltk_data_path)
+
+stop_words = set(stopwords.words("english"))
+
+# -----------------------------
+# Load files
+# -----------------------------
+model = gensim.models.Word2Vec.load("word2vec.model")
 embeddings = np.load("embeddings.npy")
 
 with open("documents.txt", "r", encoding="utf-8") as f:
     documents = f.readlines()
 
-# Load trained Word2Vec model
-model = Word2Vec.load("word2vec.model")
-
-stop_words = set(stopwords.words("english"))
-
-def retrieve_top_k(query_embedding, embeddings, k=10):
-    """Retrieve top-k most similar documents using cosine similarity."""
-    similarities = cosine_similarity(query_embedding.reshape(1, -1), embeddings)[0]
-    top_k_indices = similarities.argsort()[-k:][::-1]
-    return [(documents[i], similarities[i]) for i in top_k_indices]
-
-# Streamlit UI
-st.title("Information Retrieval using Document Embeddings")
-
-query = st.text_input("Enter your query:")
-
-# REAL query embedding function
+# -----------------------------
+# Function: Get Query Embedding
+# -----------------------------
 def get_query_embedding(query):
     tokens = [
         w.lower()
         for w in word_tokenize(query)
-        if w.isalnum() and w.lower() not in stop_words
+        if w.lower() not in stop_words and w.isalpha()
     ]
 
-    vectors = [model.wv[w] for w in tokens if w in model.wv]
+    vectors = []
+
+    for word in tokens:
+        if word in model.wv:
+            vectors.append(model.wv[word])
 
     if len(vectors) == 0:
-        return None
+        return np.zeros(model.vector_size)
 
     return np.mean(vectors, axis=0)
 
-if st.button("Search"):
+# -----------------------------
+# Streamlit UI
+# -----------------------------
+st.title("Document Search Engine")
 
+query = st.text_input("Enter your query:")
+
+if query:
     query_embedding = get_query_embedding(query)
+    similarities = cosine_similarity(
+        [query_embedding], embeddings
+    )[0]
 
-    if query_embedding is None:
-        st.warning("Query words not found in vocabulary.")
-    else:
-        results = retrieve_top_k(query_embedding, embeddings)
+    ranked_indices = np.argsort(similarities)[::-1]
 
-        st.write("### Top 10 Relevant Documents:")
+    st.subheader("Top Results:")
 
-        for doc, score in results:
-            st.write(f"- **{doc.strip()}** (Score: {score:.4f})")
+    for idx in ranked_indices[:5]:
+        st.write(f"Score: {similarities[idx]:.4f}")
+        st.write(documents[idx])
+        st.write("---")
