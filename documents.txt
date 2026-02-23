@@ -1,4 +1,0 @@
-Document 1: Information retrieval is about searching text.
-Document 2: Embeddings represent text as vectors.
-Document 3: Cosine similarity measures closeness between vectors.
-Document 4: Streamlit makes Python web apps easily.
